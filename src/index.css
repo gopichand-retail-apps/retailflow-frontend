@@ -1,0 +1,22 @@
+@import '@fontsource-variable/roboto/wght.css';
+@import '@fontsource-variable/roboto-slab/wght.css';
+
+:root {
+  font-family: 'Roboto Variable', Roboto, sans-serif;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-optical-sizing: auto;
+  font-weight: 400;
+  color: #23332c;
+  background: #f2f4ef;
+  color-scheme: light;
+}
+
+html, body, #root { min-width: 320px; min-height: 100%; margin: 0; }
+body { min-height: 100vh; }
+ p { font-family: 'Roboto Slab Variable', 'Roboto Slab', Georgia, serif; }
+button, input, select { font: inherit; }
+button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px solid #3e7651; outline-offset: 2px; }
+::selection { color: #173a2e; background: #dce8b0; }
