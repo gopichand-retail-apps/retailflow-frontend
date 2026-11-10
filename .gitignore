@@ -30,3 +30,7 @@ playwright/.cache/
 .env.*
 !.env.example
 *.war
+
+# Local deployment metadata and private environment overrides
+.vercel/
+!.env.vercel.example
