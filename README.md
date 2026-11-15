@@ -1,6 +1,7 @@
 # RetailFlow Frontend
 
 [Architecture guide](docs/architecture.md) — source map, workflows, contracts, data, security, and checks.
+**Live demo:** https://retailflow-frontend-alpha.vercel.app/
 
 ## Repository layout and Windows workflow
 
