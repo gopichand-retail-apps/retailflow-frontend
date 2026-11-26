@@ -121,6 +121,7 @@ No browser analytics or PortfolioOps events are currently emitted.
 | [src/content-schema.ts](../src/content-schema.ts)                                                                                                                       | Runtime boundary validation                                        |
 | [src/App.tsx](../src/App.tsx)<br>[src/components/LoginScreen.tsx](../src/components/LoginScreen.tsx)<br>[src/components/Workspace.tsx](../src/components/Workspace.tsx) | Screens, composition, and interaction owners; see screen inventory |
 | [src/domain/money.ts](../src/domain/money.ts)<br>[src/domain/overview.ts](../src/domain/overview.ts)<br>[src/domain/pending-queue.ts](../src/domain/pending-queue.ts)   | Client hooks, presentation state, and domain adapters              |
+| [src/domain/intent-key.ts](../src/domain/intent-key.ts)<br>[src/use-write-intent.ts](../src/use-write-intent.ts)<br>[src/use-draft-queue.ts](../src/use-draft-queue.ts)<br>[src/components/ReviewDrafts.tsx](../src/components/ReviewDrafts.tsx) | Stable idempotency key per confirmed write; operator-bound draft queue and read-only review list (POS-02) |
 | [src/App.css](../src/App.css)<br>[src/index.css](../src/index.css)                                                                                                      | Authored styling and adaptation rules                              |
 | [public/retailflow-model.json](../public/retailflow-model.json)                                                                                                         | Active public content/locale contract; no private credentials      |
 | [e2e](../e2e)                                                                                                                                                           | Existing test/support directory; configured does not mean rerun    |
@@ -170,6 +171,22 @@ If the API is unavailable, the browser stores a schema-validated draft with its
 original idempotency key. It is visibly pending and is only considered complete
 after a successful API response. Retry and storage failure are surfaced in the
 UI; local queue data is not authoritative.
+
+Each draft records the store and operator who saved it (POS-02). Only that
+operator sees it in the "Draft saved on this register" banner, and only their
+session syncs it; the banner shows "Awaiting confirmation" while a sync is in
+flight. Drafts with no recorded owner, unreadable entries, and drafts the
+operator set aside stay in storage byte-for-byte and appear in a read-only
+review list for supervisors and store administrators. Nothing is deleted except
+a draft the server confirmed; the owner has not set an abandoned-draft policy.
+
+Online checkout and return keys are created when the user confirms, held in
+memory, and reused for every retry of the same payload. A network failure or a
+5xx keeps the key and shows an awaiting-confirmation state with a "Confirm sale
+status" or "Confirm return status" action; a 4xx is a definitive rejection and
+drops the key. A changed basket or return, a cancelled return, a confirmed
+result, and sign-out each discard the key. Each HTTP attempt still sends its own
+`X-Request-ID`.
 
 #### Return
 
@@ -243,6 +260,10 @@ implemented.
 
 Current release limitation: **Demo-role login is disabled by NODE_ENV=production. Production identity, store isolation, recovery, and hosting remain open. The baseline has formatting and Windows path-test failures.**
 
+Draft ownership in the browser is a usability control on a shared register, not
+an authorization boundary: `localStorage` is readable by anyone using the device.
+The API enforces replay ownership by store and operator on every attempt.
+
 Only the local simulator controls in the current source are implemented. CORS, a role label, and mode selection do not provide a new production identity boundary.
 
 Keep private credentials out of public models, browser bundles, logs, URLs, and source archives. No additional runtime network destination or external service is configured. Keep logs limited to the source-defined request/trace and safe aggregate fields. Backups, retention, deletion, and real-user ownership need explicit product/operations decisions before external exposure.
@@ -291,9 +312,13 @@ The two Git repositories remain separate. Each owns one maintained README and th
 | ------------------------------- | ----------------------------------------------------------------- | ---------------------------------- | ------------------------------------------------------------- | -------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Repository-local architecture   | Guide available in this checkout and linked from README           | docs/architecture.md; README.md    | Documented and validated                                      | File, link, and diagram checks         | Keep documentation consistent with source changes                                                                                                                                        |
 | UI composition and API boundary | Preserve existing workflows and failure states                    | src/api.ts and source map          | Implemented; application verification limits are listed below | Current source and existing app design | Demo-role login is disabled by NODE_ENV=production. Production identity, store isolation, recovery, and hosting remain open. The baseline has formatting and Windows path-test failures. |
+| POS-02 draft and key ownership | A second operator cannot see or submit another operator's draft; the owner's retry returns the same receipt; one key per confirmed checkout and return | src/use-draft-queue.ts; src/use-write-intent.ts; src/domain/pending-queue.ts | Implemented on `feature/pos-02-draft-and-return-keys` | Vitest App.drafts/App.intent-keys tests; e2e/draft-ownership.spec.ts in both data modes | Browser storage is not a security boundary; no abandoned-draft policy yet |
 | Public deployment               | Verified identity, data durability, recovery, and hosted behavior | Existing deployment/API boundaries | Needs separate hardening/verification                         | No new hosted evidence                 | Local checks do not establish production readiness                                                                                                                                       |
 
 ## 13. Dated verification and limitations
+
+POS-02 change, **2026-11-26**: 100 unit/component tests and 5 browser tests per data mode passed with
+Node 24.15.0; see the Stage B evidence record for commands, coverage and preserved failures.
 
 Last documentation review: **2026-11-09**. The checks below distinguish documentation validation from application and deployment testing.
 

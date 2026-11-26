@@ -100,11 +100,12 @@ export function SidebarNavigation({ user, view, items, onChange, onLogout }: Sid
 interface PendingBannerProps {
   count: number
   online: boolean
+  syncing: boolean
   onRetry: () => void
-  onClear: () => void
+  onSetAside: () => void
 }
 
-export function PendingBanner({ count, online, onRetry, onClear }: PendingBannerProps) {
+export function PendingBanner({ count, online, syncing, onRetry, onSetAside }: PendingBannerProps) {
   const { t } = useContent()
   if (count === 0) return null
   const ConnectionIcon = online ? Cloud : CloudOff
@@ -116,13 +117,13 @@ export function PendingBanner({ count, online, onRetry, onClear }: PendingBanner
       </span>
       <span>
         <strong>{t(count === 1 ? 'workspace.offlineDraft.one' : 'workspace.offlineDraft.other', { count })}</strong>
-        <small>{t('workspace.draftSyncNote')}</small>
+        <small>{t(syncing ? 'workspace.draftAwaiting' : 'workspace.draftSyncNote')}</small>
       </span>
-      <button className="secondary-button" type="button" disabled={!online} onClick={onRetry}>
+      <button className="secondary-button" type="button" disabled={!online || syncing} onClick={onRetry}>
         <ConnectionIcon size={14} aria-hidden="true" /> {t('workspace.retrySync')}
       </button>
-      <button className="text-button" type="button" onClick={onClear}>
-        {t('workspace.clear')}
+      <button className="text-button" type="button" onClick={onSetAside}>
+        {t('workspace.setAside')}
       </button>
     </div>
   )
@@ -298,6 +299,8 @@ export function WorkspacePage(props: WorkspacePageProps) {
 interface DialogLayerProps {
   checkoutOpen: boolean
   checkoutError: string | null
+  checkoutAwaiting: boolean
+  returnAwaiting: boolean
   busy: boolean
   online: boolean
   totalMinor: number
@@ -323,6 +326,7 @@ export function DialogLayer(props: DialogLayerProps) {
           busy={props.busy}
           online={props.online}
           error={props.checkoutError}
+          awaiting={props.checkoutAwaiting}
           onClose={props.onCloseCheckout}
           onSubmit={props.onCheckout}
         />
@@ -333,6 +337,7 @@ export function DialogLayer(props: DialogLayerProps) {
           sale={props.returningSale}
           busy={props.busy}
           error={props.returnError}
+          awaiting={props.returnAwaiting}
           onClose={props.onCloseReturn}
           onSubmit={props.onReturn}
         />

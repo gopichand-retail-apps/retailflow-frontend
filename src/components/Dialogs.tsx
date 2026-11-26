@@ -24,11 +24,20 @@ interface CheckoutDialogProps {
   busy: boolean
   online: boolean
   error: string | null
+  /** The server may have recorded this sale; the next submit confirms it with the same key. */
+  awaiting?: boolean
   onClose: () => void
   onSubmit: (tenders: Array<{ kind: TenderKind; amountMinor: number }>) => void
 }
 
-export function CheckoutDialog({ totalMinor, busy, online, error, onClose, onSubmit }: CheckoutDialogProps) {
+function checkoutSubmitLabel(state: { busy: boolean; awaiting: boolean; online: boolean }): string {
+  if (state.busy) return 'checkout.recording'
+  if (state.awaiting) return 'checkout.confirmStatus'
+  return state.online ? 'checkout.completeSale' : 'checkout.saveDraft'
+}
+
+export function CheckoutDialog(props: CheckoutDialogProps) {
+  const { totalMinor, busy, online, error, awaiting = false, onClose, onSubmit } = props
   const { model, t } = useContent()
   const formatMoney = (amountMinor: number) =>
     new Intl.NumberFormat(model.locale, {
@@ -95,7 +104,12 @@ export function CheckoutDialog({ totalMinor, busy, online, error, onClose, onSub
       <label className="field-label" htmlFor="tender-kind">
         {t('checkout.method')}
       </label>
-      <select id="tender-kind" value={firstKind} onChange={(event) => setFirstKind(event.target.value as TenderKind)}>
+      <select
+        id="tender-kind"
+        value={firstKind}
+        disabled={awaiting}
+        onChange={(event) => setFirstKind(event.target.value as TenderKind)}
+      >
         <option value="cash">{t('checkout.cash')}</option>
         <option value="sandbox" disabled={!online}>
           {t('checkout.sandboxTender')}
@@ -113,6 +127,7 @@ export function CheckoutDialog({ totalMinor, busy, online, error, onClose, onSub
               id="first-tender-amount"
               inputMode="decimal"
               value={firstAmount}
+              disabled={awaiting}
               onChange={(event) => setFirstAmount(event.target.value)}
               aria-describedby="split-remainder"
             />
@@ -124,6 +139,7 @@ export function CheckoutDialog({ totalMinor, busy, online, error, onClose, onSub
             <select
               id="second-tender-kind"
               value={secondKind}
+              disabled={awaiting}
               onChange={(event) => setSecondKind(event.target.value as TenderKind)}
             >
               <option value="cash">{t('checkout.cash')}</option>
@@ -136,13 +152,18 @@ export function CheckoutDialog({ totalMinor, busy, online, error, onClose, onSub
         </>
       )}
 
-      <button className="split-toggle" type="button" onClick={toggleSplit}>
+      <button className="split-toggle" type="button" disabled={awaiting} onClick={toggleSplit}>
         {split ? t('checkout.useOneTender') : t('checkout.splitTender')}
       </button>
       <p className="security-note">{online ? t('checkout.onlineSecurity') : t('checkout.offlineSecurity')}</p>
       {error && (
         <p className="form-error" role="alert">
           {error}
+        </p>
+      )}
+      {awaiting && (
+        <p className="awaiting-note" role="status">
+          {t('checkout.awaiting')}
         </p>
       )}
       <div className="modal-actions">
@@ -155,8 +176,7 @@ export function CheckoutDialog({ totalMinor, busy, online, error, onClose, onSub
           onClick={submit}
           disabled={busy || firstMinor === null || firstMinor < 1 || remainingMinor < (split ? 1 : 0)}
         >
-          {busy ? t('checkout.recording') : online ? t('checkout.completeSale') : t('checkout.saveDraft')}{' '}
-          <Check size={17} aria-hidden="true" />
+          {t(checkoutSubmitLabel({ busy, awaiting, online }))} <Check size={17} aria-hidden="true" />
         </button>
       </div>
     </dialog>
@@ -255,6 +275,8 @@ interface ReturnDialogProps {
   sale: SaleDetail
   busy: boolean
   error: string | null
+  /** The server may have recorded this return; the next submit confirms it with the same key. */
+  awaiting?: boolean
   onClose: () => void
   onSubmit: (
     items: Array<{ saleLineId: string; quantity: number }>,
@@ -262,7 +284,12 @@ interface ReturnDialogProps {
   ) => void
 }
 
-export function ReturnDialog({ sale, busy, error, onClose, onSubmit }: ReturnDialogProps) {
+function returnSubmitLabel(busy: boolean, awaiting: boolean): string {
+  if (busy) return 'return.recording'
+  return awaiting ? 'return.confirmStatus' : 'return.record'
+}
+
+export function ReturnDialog({ sale, busy, error, awaiting = false, onClose, onSubmit }: ReturnDialogProps) {
   const { model, t } = useContent()
   const formatMoney = (amountMinor: number) =>
     new Intl.NumberFormat(model.locale, {
@@ -309,7 +336,7 @@ export function ReturnDialog({ sale, busy, error, onClose, onSubmit }: ReturnDia
                 max={remaining}
                 step={1}
                 value={quantities[line.id] ?? 0}
-                disabled={remaining === 0}
+                disabled={remaining === 0 || awaiting}
                 onChange={(event) =>
                   setQuantities((current) => ({
                     ...current,
@@ -324,7 +351,12 @@ export function ReturnDialog({ sale, busy, error, onClose, onSubmit }: ReturnDia
       <label className="field-label" htmlFor="return-reason">
         {t('return.reason')}
       </label>
-      <select id="return-reason" value={reason} onChange={(event) => setReason(event.target.value as typeof reason)}>
+      <select
+        id="return-reason"
+        value={reason}
+        disabled={awaiting}
+        onChange={(event) => setReason(event.target.value as typeof reason)}
+      >
         <option value="customer_request">{t('return.reason.customer_request')}</option>
         <option value="damaged">{t('return.reason.damaged')}</option>
         <option value="other">{t('return.reason.other')}</option>
@@ -332,6 +364,11 @@ export function ReturnDialog({ sale, busy, error, onClose, onSubmit }: ReturnDia
       {error && (
         <p className="form-error" role="alert">
           {error}
+        </p>
+      )}
+      {awaiting && (
+        <p className="awaiting-note" role="status">
+          {t('return.awaiting')}
         </p>
       )}
       <div className="modal-actions">
@@ -344,7 +381,7 @@ export function ReturnDialog({ sale, busy, error, onClose, onSubmit }: ReturnDia
           disabled={busy || requestedItems.length === 0}
           onClick={() => onSubmit(requestedItems, reason)}
         >
-          {busy ? t('return.recording') : t('return.record')} <RotateCcw size={16} aria-hidden="true" />
+          {t(returnSubmitLabel(busy, awaiting))} <RotateCcw size={16} aria-hidden="true" />
         </button>
       </div>
     </dialog>

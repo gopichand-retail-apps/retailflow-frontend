@@ -22,11 +22,13 @@ import {
   WorkspacePage,
   type ViewId,
 } from './components/Workspace'
+import { ReviewDraftsPanel } from './components/ReviewDrafts'
 import { calculateCartTotals, formatMoney, type CartEntry } from './domain/money'
 import { EMPTY_OVERVIEW } from './domain/overview'
-import { readPendingCheckouts, writePendingCheckouts, type PendingCheckout } from './domain/pending-queue'
 import { errorMessage } from './error-message'
 import { useDemoSession } from './use-demo-session'
+import { useDraftQueue } from './use-draft-queue'
+import { useWriteIntent } from './use-write-intent'
 import { isMock } from './config'
 import './App.css'
 
@@ -51,10 +53,20 @@ export default function App() {
   const [returnError, setReturnError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const [online, setOnline] = useState(navigator.onLine)
-  const [pendingDrafts, setPendingDrafts] = useState<PendingCheckout[]>(readPendingCheckouts)
-  const [retrySync, setRetrySync] = useState(0)
   const [refreshVersion, setRefreshVersion] = useState(0)
   const [overview, setOverview] = useState<Overview>(EMPTY_OVERVIEW)
+  const checkoutIntent = useWriteIntent()
+  const returnIntent = useWriteIntent()
+  const discardCheckoutIntent = checkoutIntent.discard
+  const drafts = useDraftQueue(user, online, {
+    onSynced: (sale) => {
+      setNotice(t('notice.offlineSynced', { receipt: sale.receiptNumber }))
+      setSales((current) => [sale, ...current.filter((entry) => entry.id !== sale.id)])
+      setRefreshVersion((version) => version + 1)
+    },
+    onSyncFailed: (error) => setNotice(t('notice.offlineReview', { message: errorMessage(error, t, model.messages) })),
+    onSaveFailed: () => setNotice(t('notice.offlineQueueSave')),
+  })
 
   useEffect(() => {
     document.documentElement.dataset.mode = dataMode
@@ -69,7 +81,13 @@ export default function App() {
   })
   const totals = calculateCartTotals(cartEntries, discountBasisPoints, taxBasisPoints)
   const basketCount = cartEntries.reduce((sum, entry) => sum + entry.quantity, 0)
-  const firstDraft = pendingDrafts[0]
+  const basketFingerprint = JSON.stringify([
+    cartEntries.map(({ product, quantity }) => [product.id, quantity]),
+    discountBasisPoints,
+  ])
+
+  // A changed basket is a new intent: drop any unconfirmed checkout key and its awaiting state.
+  useEffect(() => discardCheckoutIntent(), [basketFingerprint, discardCheckoutIntent])
 
   useEffect(() => {
     if (!user) return
@@ -105,38 +123,6 @@ export default function App() {
   }, [])
 
   useEffect(() => {
-    if (!writePendingCheckouts(pendingDrafts)) {
-      setNotice(t('notice.offlineQueueSave'))
-    }
-  }, [pendingDrafts, t])
-
-  useEffect(() => {
-    if (!online || !user || !firstDraft) return
-    let active = true
-    api
-      .createSale(firstDraft.payload, firstDraft.idempotencyKey)
-      .then(({ sale }) => {
-        if (!active) return
-        setPendingDrafts((current) => current.filter((entry) => entry.idempotencyKey !== firstDraft.idempotencyKey))
-        setNotice(t('notice.offlineSynced', { receipt: sale.receiptNumber }))
-        setSales((current) => [sale, ...current.filter((entry) => entry.id !== sale.id)])
-        setRefreshVersion((version) => version + 1)
-      })
-      .catch((error: unknown) => {
-        if (active) {
-          setNotice(
-            t('notice.offlineReview', {
-              message: errorMessage(error, t, model.messages),
-            }),
-          )
-        }
-      })
-    return () => {
-      active = false
-    }
-  }, [firstDraft, model.messages, online, retrySync, t, user])
-
-  useEffect(() => {
     if (!notice) return
     const timeout = window.setTimeout(() => setNotice(null), 5200)
     return () => window.clearTimeout(timeout)
@@ -152,6 +138,9 @@ export default function App() {
     try {
       await api.logout()
     } finally {
+      // Unconfirmed keys belong to this operator's session. Saved drafts stay with their owner.
+      checkoutIntent.discard()
+      returnIntent.discard()
       setUser(null)
       setBasket({})
       setSelectedSale(null)
@@ -201,12 +190,14 @@ export default function App() {
       discountBasisPoints,
       tenders,
     }
-    const idempotencyKey = crypto.randomUUID()
+    // Created when the cashier confirms; reused for every retry of this exact payload.
+    const idempotencyKey = checkoutIntent.keyFor(JSON.stringify(payload))
     try {
       if (!navigator.onLine && tenders.every((tender) => tender.kind === 'cash')) {
         throw new TypeError('NETWORK_UNAVAILABLE')
       }
       const result = await api.createSale(payload, idempotencyKey)
+      checkoutIntent.discard()
       setSales((current) => [result.sale, ...current.filter((sale) => sale.id !== result.sale.id)])
       setOverview((current) => ({
         ...current,
@@ -224,12 +215,15 @@ export default function App() {
     } catch (error) {
       const cashTender = tenders.every((tender) => tender.kind === 'cash')
       if (cashTender && (!navigator.onLine || error instanceof TypeError)) {
-        setPendingDrafts((current) => [...current, { idempotencyKey, createdAt: new Date().toISOString(), payload }])
+        // The key moves into the draft, which is bound to this operator and store.
+        drafts.save({ idempotencyKey, createdAt: new Date().toISOString(), payload })
+        checkoutIntent.discard()
         setBasket({})
         setDiscountBasisPoints(0)
         setCheckoutOpen(false)
         setNotice(t('notice.pendingDraft'))
       } else {
+        checkoutIntent.failed(error)
         setCheckoutError(errorMessage(error, t, model.messages))
       }
     } finally {
@@ -251,12 +245,14 @@ export default function App() {
     reason: 'customer_request' | 'damaged' | 'other',
   ): Promise<void> {
     if (!returningSale) return
+    const saleId = returningSale.id
     setBusy(true)
     setReturnError(null)
+    const request = { items, reason }
+    const idempotencyKey = returnIntent.keyFor(JSON.stringify([saleId, request]))
     try {
-      const result = await api.returnSale(returningSale.id, { items, reason }, crypto.randomUUID())
-      const refreshedSale = await api.sale(returningSale.id)
-      setSelectedSale(refreshedSale.sale)
+      const result = await api.returnSale(saleId, request, idempotencyKey)
+      returnIntent.discard()
       setReturningSale(null)
       setNotice(
         t('notice.refundRecorded', {
@@ -264,7 +260,11 @@ export default function App() {
         }),
       )
       setRefreshVersion((version) => version + 1)
+      // The return is confirmed. A failed refresh must not invite a second return from stale data.
+      const refreshed = await api.sale(saleId).catch(() => null)
+      setSelectedSale(refreshed?.sale ?? null)
     } catch (error) {
+      returnIntent.failed(error)
       setReturnError(errorMessage(error, t, model.messages))
     } finally {
       setBusy(false)
@@ -294,8 +294,15 @@ export default function App() {
     }
   }
 
-  function clearPendingDrafts(): void {
-    if (window.confirm(t('confirm.clearDrafts'))) setPendingDrafts([])
+  function setAsideDrafts(): void {
+    if (!window.confirm(t('confirm.setAsideDrafts'))) return
+    drafts.setAside()
+    setNotice(t('notice.draftsSetAside'))
+  }
+
+  function closeReturn(): void {
+    returnIntent.discard()
+    setReturningSale(null)
   }
 
   if (sessionLoading)
@@ -331,11 +338,13 @@ export default function App() {
         />
         <NoticeBanner message={notice ?? ''} onDismiss={() => setNotice(null)} />
         <PendingBanner
-          count={pendingDrafts.length}
+          count={drafts.mine.length}
           online={online}
-          onRetry={() => setRetrySync((value) => value + 1)}
-          onClear={clearPendingDrafts}
+          syncing={drafts.syncing}
+          onRetry={drafts.retry}
+          onSetAside={setAsideDrafts}
         />
+        <ReviewDraftsPanel drafts={drafts.review} />
         <WorkspacePage
           view={view}
           overview={overview}
@@ -371,6 +380,8 @@ export default function App() {
       <DialogLayer
         checkoutOpen={checkoutOpen}
         checkoutError={checkoutError}
+        checkoutAwaiting={checkoutIntent.awaiting}
+        returnAwaiting={returnIntent.awaiting}
         busy={busy}
         online={online}
         totalMinor={totals.totalMinor}
@@ -380,7 +391,7 @@ export default function App() {
         onCloseCheckout={() => setCheckoutOpen(false)}
         onCheckout={(tenders) => void completeCheckout(tenders)}
         onCloseReceipt={() => setReceipt(null)}
-        onCloseReturn={() => setReturningSale(null)}
+        onCloseReturn={closeReturn}
         onReturn={(items, reason) => void recordReturn(items, reason)}
       />
     </div>

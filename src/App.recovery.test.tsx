@@ -222,7 +222,7 @@ describe('RetailFlow app recovery workflows', () => {
     })
   })
 
-  it('requires confirmation before clearing pending cash drafts', async () => {
+  it('requires confirmation before setting aside pending cash drafts, and never deletes them', async () => {
     Object.defineProperty(navigator, 'onLine', { configurable: true, value: false })
     const user = await signInAs('cashier')
     await user.click(screen.getByRole('button', { name: 'Add Daybreak Coffee Beans to basket' }))
@@ -232,12 +232,14 @@ describe('RetailFlow app recovery workflows', () => {
 
     const confirm = vi.spyOn(window, 'confirm')
     confirm.mockReturnValueOnce(false).mockReturnValueOnce(true)
-    await user.click(screen.getByRole('button', { name: 'Clear' }))
+    await user.click(screen.getByRole('button', { name: 'Set aside' }))
     expect(screen.getByText('1 offline cash draft')).toBeTruthy()
 
-    await user.click(screen.getByRole('button', { name: 'Clear' }))
+    await user.click(screen.getByRole('button', { name: 'Set aside' }))
     await waitFor(() => expect(screen.queryByText('1 offline cash draft')).toBeNull())
-    expect(JSON.parse(localStorage.getItem('retailflow.pending-checkouts.v1') ?? '[]')).toEqual([])
+    const stored = JSON.parse(localStorage.getItem('retailflow.pending-checkouts.v1') ?? '[]') as unknown[]
+    expect(stored).toHaveLength(1)
+    expect(stored[0]).toMatchObject({ setAside: true })
   })
 
   it('shows a safe notice when opening a sale fails', async () => {
