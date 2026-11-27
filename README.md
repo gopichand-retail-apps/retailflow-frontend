@@ -55,6 +55,27 @@ provider. See the [data-mode and architecture guide](docs/architecture.md#10-bui
 The [repository architecture](docs/architecture.md) covers this frontend. The backend
 [threat model](https://github.com/gopichand-retail-apps/retailflow-backend/blob/main/docs/security/threat-model.md) is maintained with the API.
 
+## Cash drafts and retries on a shared register
+
+A cash checkout that cannot reach the API is kept as a draft on this register,
+tagged with the store and operator who saved it. Only that operator sees and
+syncs it after signing in again; another operator never does. A draft is never
+a sale until the server confirms it, and the sync reuses the draft's original
+`Idempotency-Key`, so a reply lost on the way back gives the same receipt.
+
+- **Set aside** moves the signed-in operator's own drafts to the review list.
+  Nothing on the register is deleted; there is no automatic expiry.
+- Drafts with no recorded owner (saved by an older version), unreadable entries
+  and set-aside drafts are listed read-only for supervisors and store
+  administrators. They are never submitted or deleted automatically.
+- Online checkout and returns create one key when the user confirms. A retry
+  after a network failure or server error reuses it and shows "awaiting
+  confirmation"; changing the basket or the return, cancelling, or signing out
+  discards it. Keys for online writes are kept in memory only.
+
+Drafts are browser `localStorage` on a shared device, not a security boundary.
+The API independently refuses to replay a key for a different store or operator.
+
 ## Checks
 
 ```sh

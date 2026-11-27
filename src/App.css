@@ -66,6 +66,15 @@ button { color: inherit; }
 .pending-banner strong { color: #584626; font-size: 11px; }
 .pending-banner small { color: #857348; font-size: 10px; }
 .text-button { padding: 6px; border: 0; color: #7e6950; background: transparent; font-size: 10px; cursor: pointer; }
+.review-drafts { margin: 10px 28px 0; border: 1px solid #e3d6c4; border-radius: 6px; background: #fbf8f3; color: #5a4a36; font-size: 11px; }
+.review-drafts > summary { padding: 10px 13px; display: flex; align-items: center; gap: 9px; font-weight: 700; cursor: pointer; }
+.review-drafts > summary:focus-visible { outline: 2px solid var(--pine); outline-offset: -2px; border-radius: 6px; }
+.review-note { margin: 2px 13px 8px; color: #7a6a52; font-size: 10px; }
+.review-list { margin: 0; padding: 0 13px 11px; display: grid; gap: 6px; list-style: none; }
+.review-list li { padding: 7px 9px; display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 12px; border: 1px solid #ece2d3; border-radius: 4px; background: #fff; }
+.review-list li span { color: #7a6a52; overflow-wrap: anywhere; }
+.awaiting-note { margin: 9px 0 0; padding: 8px 10px; border: 1px solid #eadbb4; border-radius: 4px; color: #584626; background: #fff9e8; font-size: 10px; line-height: 1.45; }
+.split-toggle:disabled { opacity: .5; cursor: not-allowed; }
 
 .checkout-workspace { min-height: 0; flex: 1; display: grid; grid-template-columns: minmax(0,1fr) 348px; }
 .catalog-column { min-width: 0; padding: 22px 26px 26px 30px; }
@@ -408,7 +417,7 @@ tbody tr:hover, tbody tr.is-selected { background: #f4f7f0; }
   .sale-detail-panel { padding: 13px; }
   .settings-section { padding: 14px; }
   .settings-value { max-width: 145px; text-align: right; }
-  .notice-bar, .pending-banner { margin-right: 10px; margin-left: 10px; }
+  .notice-bar, .pending-banner, .review-drafts { margin-right: 10px; margin-left: 10px; }
   .pending-banner { align-items: flex-start; flex-wrap: wrap; }
   .pending-banner > span:nth-child(2) { min-width: calc(100% - 45px); }
   .pending-banner .secondary-button { margin-left: 27px; }
